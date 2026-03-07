@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhoneIntel</string>
+    <string name="notification_listener_label">PhoneIntel Notification Tracker</string>
+    <string name="permission_usage_stats">Usage Statistics Access</string>
+    <string name="permission_notification">Notification Access</string>
+    <string name="permission_rationale_usage">PhoneIntel needs access to usage statistics to show you which apps you use most. All data stays on your device.</string>
+    <string name="permission_rationale_notification">PhoneIntel needs notification access to count incoming notifications per app. Notification content is never stored.</string>
+    <string name="grant">Grant</string>
+    <string name="dismiss">Dismiss</string>
+    <string name="no_data">No data yet</string>
+    <string name="privacy_notice">All data is stored locally on your device. Nothing leaves your phone.</string>
+</resources>
