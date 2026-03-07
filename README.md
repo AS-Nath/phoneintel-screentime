@@ -180,3 +180,4 @@ git clone <repo>
 - [ ] Dark/light theme toggle in settings
 - [ ] App icon categories (Social, Productivity, Entertainment)
 - [ ] Year recap shareable card (generated locally, no upload)
+- [ ] XP + levelling system (Gamified aspect to promote user retention) 
