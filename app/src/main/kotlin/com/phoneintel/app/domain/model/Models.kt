@@ -112,6 +112,13 @@ data class DashboardSummary(
 
 // ─── Unlock Sessions / Attention ─────────────────────────────────────────────
 
+data class UnlockSession(
+    val id: Long,
+    val unlockTime: Long,
+    val lockTime: Long,
+    val durationMs: Long
+)
+
 data class AttentionStats(
     val sessionCount: Int,
     val avgSessionMs: Long,

@@ -15,6 +15,7 @@ import android.content.pm.PackageManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.phoneintel.app.MainActivity
@@ -54,7 +55,7 @@ class DataCollectionService : Service() {
             val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
             val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
             val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                             status == BatteryManager.BATTERY_STATUS_FULL
+                    status == BatteryManager.BATTERY_STATUS_FULL
             val chargePlug = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1)
             val chargeType = when (chargePlug) {
                 BatteryManager.BATTERY_PLUGGED_AC -> "AC"
@@ -79,31 +80,50 @@ class DataCollectionService : Service() {
         }
     }
 
-    // ─── Screen / unlock receiver ─────────────────────────────────────────────
-    // ACTION_USER_PRESENT fires when the user dismisses the keyguard — this
-    // is the real "intentional unlock" moment.
-    // ACTION_SCREEN_OFF fires when the screen turns off — session end.
+    // ─── Screen receiver ──────────────────────────────────────────────────────
+    // ACTION_USER_PRESENT is unreliable on Samsung One UI with biometric unlock
+    // (the broadcast is never sent after fingerprint/face auth on modern devices).
+    // We use SCREEN_ON as the unlock signal instead — it fires reliably on all
+    // devices and OEMs regardless of lock screen type.
+    // SCREEN_OFF reliably marks the end of every session.
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            Log.d(TAG, "screenReceiver.onReceive: action=${intent.action}")
             when (intent.action) {
-                Intent.ACTION_USER_PRESENT -> {
+                Intent.ACTION_SCREEN_ON -> {
                     val now = System.currentTimeMillis()
                     unlockTime = now
+                    Log.d(TAG, "SCREEN_ON — starting session at $now")
                     scope.launch {
-                        currentSessionId = unlockSessionRepository.startSession(now)
+                        try {
+                            currentSessionId = unlockSessionRepository.startSession(now)
+                            Log.d(TAG, "Session started successfully, id=$currentSessionId")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "ERROR starting session", e)
+                        }
                     }
                     showMindfulUnlockNotification()
                 }
                 Intent.ACTION_SCREEN_OFF -> {
                     val sid = currentSessionId
                     val start = unlockTime
+                    Log.d(TAG, "ACTION_SCREEN_OFF fired — sid=$sid, start=$start")
                     if (sid > 0L && start > 0L) {
                         val now = System.currentTimeMillis()
+                        val duration = now - start
+                        Log.d(TAG, "Ending session id=$sid, durationMs=$duration")
                         scope.launch {
-                            unlockSessionRepository.endSession(sid, now, now - start)
+                            try {
+                                unlockSessionRepository.endSession(sid, now, duration)
+                                Log.d(TAG, "Session ended successfully")
+                            } catch (e: Exception) {
+                                Log.e(TAG, "ERROR ending session", e)
+                            }
                         }
                         currentSessionId = -1L
                         unlockTime = 0L
+                    } else {
+                        Log.w(TAG, "SCREEN_OFF skipped — no active session (sid=$sid, start=$start)")
                     }
                 }
             }
@@ -127,7 +147,7 @@ class DataCollectionService : Service() {
 
             val hasBluetoothPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==
-                    PackageManager.PERMISSION_GRANTED
+                        PackageManager.PERMISSION_GRANTED
             } else true
 
             val deviceName = if (hasBluetoothPermission)
@@ -170,16 +190,14 @@ class DataCollectionService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.d(TAG, "DataCollectionService onCreate — SDK=${Build.VERSION.SDK_INT}")
         createNotificationChannels()
         startForeground(NOTIFICATION_ID, buildForegroundNotification())
 
-        // ACTION_BATTERY_CHANGED is sticky — no flag needed; null context variant not required here
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
 
-        // Screen events must be registered dynamically (not in manifest).
-        // API 34+ requires RECEIVER_NOT_EXPORTED or RECEIVER_EXPORTED for all dynamic receivers.
         val screenFilter = IntentFilter().apply {
-            addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_SCREEN_ON)
             addAction(Intent.ACTION_SCREEN_OFF)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -187,8 +205,8 @@ class DataCollectionService : Service() {
         } else {
             registerReceiver(screenReceiver, screenFilter)
         }
+        Log.d(TAG, "screenReceiver registered for SCREEN_ON, SCREEN_OFF")
 
-        // Bluetooth events come from other apps / system — must be EXPORTED
         val btFilter = IntentFilter().apply {
             addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
             addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
@@ -198,26 +216,33 @@ class DataCollectionService : Service() {
         } else {
             registerReceiver(bluetoothReceiver, btFilter)
         }
+
         startPeriodicSync()
+        Log.d(TAG, "DataCollectionService fully started")
     }
 
     private fun startPeriodicSync() {
         syncJob = scope.launch {
             while (isActive) {
+                Log.d(TAG, "Periodic sync running")
                 runCatching { appUsageRepository.syncUsageStats() }
+                    .onFailure { Log.e(TAG, "syncUsageStats failed", it) }
                 runCatching { networkRepository.syncNetworkStats() }
+                    .onFailure { Log.e(TAG, "syncNetworkStats failed", it) }
                 delay(SYNC_INTERVAL_MS)
             }
         }
     }
 
     // ─── Mindful Unlock Notification ──────────────────────────────────────────
-    // Shown at the exact moment of every intentional unlock — the highest-
-    // leverage moment for behavior change that Digital Wellbeing completely ignores.
     private fun showMindfulUnlockNotification() {
         scope.launch {
-            val sessions = runCatching { unlockSessionRepository.getCompletedToday() }.getOrDefault(emptyList())
-            val unlockCountToday = sessions.size + 1  // +1 for the session just started
+            val sessions = runCatching { unlockSessionRepository.getCompletedToday() }
+                .onFailure { Log.e(TAG, "getCompletedToday failed", it) }
+                .getOrDefault(emptyList())
+            val unlockCountToday = sessions.size + 1
+
+            Log.d(TAG, "Showing mindful unlock notification — unlock #$unlockCountToday today")
 
             val tapIntent = PendingIntent.getActivity(
                 this@DataCollectionService, 0,
@@ -240,7 +265,13 @@ class DataCollectionService : Service() {
         }
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand called — flags=$flags, startId=$startId")
+        return START_STICKY
+    }
+
     override fun onDestroy() {
+        Log.w(TAG, "DataCollectionService onDestroy — service is being stopped!")
         super.onDestroy()
         scope.cancel()
         runCatching { unregisterReceiver(batteryReceiver) }
@@ -272,6 +303,7 @@ class DataCollectionService : Service() {
             .build()
 
     companion object {
+        const val TAG = "PhoneIntel"
         private const val NOTIFICATION_ID = 1001
         private const val NOTIFICATION_MINDFUL_ID = 1002
         const val CHANNEL_BG = "phoneintel_bg"
@@ -285,6 +317,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED ||
             intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            Log.d(DataCollectionService.TAG, "BootReceiver fired — starting DataCollectionService")
             context.startForegroundService(Intent(context, DataCollectionService::class.java))
         }
     }

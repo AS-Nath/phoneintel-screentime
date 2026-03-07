@@ -79,7 +79,10 @@ class DashboardViewModel @Inject constructor(
             .launchIn(viewModelScope)
 
         unlockSessionRepository.observeAvgDurationToday()
-            .onEach { avg -> _uiState.update { it.copy(avgSessionMs = avg) } }
+            .onEach { avg ->
+                _uiState.update { it.copy(avgSessionMs = avg) }
+                recomputeHealthScore()
+            }
             .launchIn(viewModelScope)
 
         unlockSessionRepository.observeMaxDurationToday()
