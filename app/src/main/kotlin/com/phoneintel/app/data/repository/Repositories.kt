@@ -149,6 +149,9 @@ class AppUsageRepository @Inject constructor(
     suspend fun getRawUsageSince(fromDate: Long): List<AppUsageEntity> =
         withContext(Dispatchers.IO) { dao.getAllSince(fromDate) }
 
+    suspend fun getAllSince(fromDate: Long): List<AppUsageEntity> =
+        withContext(Dispatchers.IO) { dao.getAllSince(fromDate) }
+
 }
 
 // ─── Notification Repository ──────────────────────────────────────────────────
@@ -173,6 +176,7 @@ class NotificationRepository @Inject constructor(
 
     suspend fun getRawSince(since: Long): List<NotificationEventEntity> =
         withContext(Dispatchers.IO) { dao.getRange(since, System.currentTimeMillis()) }
+
 }
 
 // ─── Network Repository ───────────────────────────────────────────────────────
@@ -277,6 +281,7 @@ class NetworkRepository @Inject constructor(
 
     fun observeTotalMobile(since: Long): Flow<Long> =
         dao.observeTotalByType(since, "MOBILE").map { it ?: 0L }
+
 }
 
 // ─── Unlock Session Repository ────────────────────────────────────────────────
@@ -368,6 +373,8 @@ class BluetoothRepository @Inject constructor(
 
 // ─── Insight Repository ───────────────────────────────────────────────────────
 
+// ─── Insight Repository ───────────────────────────────────────────────────────
+
 @Singleton
 class InsightRepository @Inject constructor(
     private val unlockSessionRepository: UnlockSessionRepository,
@@ -377,8 +384,9 @@ class InsightRepository @Inject constructor(
     suspend fun getInsights(): List<InsightCard> = withContext(Dispatchers.IO) {
         val sevenDaysAgo = DateUtil.daysAgo(6)
         val sessions      = unlockSessionRepository.getCompletedSince(sevenDaysAgo)
-        val appUsage      = appUsageRepository.getRawUsageSince(sevenDaysAgo)
+        val appUsage      = appUsageRepository.getAllSince(sevenDaysAgo)
         val notifications = notificationRepository.getRawSince(sevenDaysAgo)
         InsightEngine.analyse(sessions, appUsage, notifications)
     }
 }
+

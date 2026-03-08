@@ -126,7 +126,12 @@ fun DashboardScreen(
                             color = TextPrimary
                         )
                         Text(
-                            "Top 15% of users",
+                            when {
+                                state.healthScore >= 80 -> "Excellent balance"
+                                state.healthScore >= 60 -> "Good balance"
+                                state.healthScore >= 40 -> "Room to improve"
+                                else -> "Needs attention"
+                            },
                             style = MaterialTheme.typography.labelSmall,
                             color = TextSecondary
                         )
