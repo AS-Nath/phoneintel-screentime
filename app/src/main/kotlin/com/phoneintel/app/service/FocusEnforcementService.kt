@@ -20,10 +20,14 @@ import javax.inject.Inject
  * Runs while focus mode is active. Polls the foreground app every 1 second
  * using UsageEvents (requires PACKAGE_USAGE_STATS, already granted).
  *
- * When a blocked app is detected, launches FocusBlockedActivity on top of it.
- * Note: for maximum reliability, the user should grant "Display over other apps"
- * (SYSTEM_ALERT_WINDOW) in device settings. The feature degrades gracefully to
- * notification-only without it.
+ * Key design: we maintain a persistent `currentForegroundPkg` that is updated
+ * from ALL UsageEvents since the service started — not just a 2-second window.
+ * This fixes apps like Aaj Tak that fire MOVE_TO_FOREGROUND once on launch and
+ * then go quiet, which caused the original 2-second window to miss them entirely.
+ *
+ * Note: for maximum reliability, the user should also grant "Display over other
+ * apps" (SYSTEM_ALERT_WINDOW) in device settings. The feature degrades gracefully
+ * to notification-only without it.
  */
 @AndroidEntryPoint
 class FocusEnforcementService : Service() {
@@ -31,23 +35,27 @@ class FocusEnforcementService : Service() {
     @Inject lateinit var focusRepository: FocusRepository
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var lastBlockedPkg: String? = null
-
-    // Guard against onStartCommand being called multiple times due to START_STICKY.
-    // Without this, each restart would spawn a duplicate polling loop and collect.
     private val started = AtomicBoolean(false)
+
+    // The last package we confirmed as foreground — persists across poll cycles
+    private var currentForegroundPkg: String? = null
+    // The last package we launched the block screen for — prevents re-firing every second
+    private var lastBlockedPkg: String? = null
+    // Timestamp from which we start scanning events — moves forward each poll
+    private var eventScanFrom: Long = 0L
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIFICATION_ID, buildFocusNotification())
 
         if (started.compareAndSet(false, true)) {
-            // Observe focus state — stop service if focus is disabled externally
+            // Start scanning from now — no need to replay history
+            eventScanFrom = System.currentTimeMillis() - 2_000L
+
             scope.launch {
                 focusRepository.focusState.collect { state ->
                     if (!state.isActive) {
                         stopSelf()
                     } else {
-                        // Refresh ongoing notification with current intent label
                         getSystemService(NotificationManager::class.java)
                             .notify(NOTIFICATION_ID, buildFocusNotification())
                     }
@@ -65,13 +73,20 @@ class FocusEnforcementService : Service() {
             while (isActive) {
                 val blocked = focusRepository.getBlockedPackages()
                 if (blocked.isNotEmpty()) {
-                    val foregroundPkg = detectForegroundApp(usm)
-                    if (foregroundPkg != null && foregroundPkg in blocked &&
-                        foregroundPkg != packageName && foregroundPkg != lastBlockedPkg) {
-                        lastBlockedPkg = foregroundPkg
-                        launchBlockScreen(foregroundPkg)
-                    } else if (foregroundPkg != null && foregroundPkg !in blocked) {
-                        lastBlockedPkg = null
+                    // Update our persistent view of what's in the foreground
+                    updateForegroundState(usm)
+
+                    val pkg = currentForegroundPkg
+                    when {
+                        // Blocked app is in foreground and we haven't shown the screen yet
+                        pkg != null && pkg in blocked && pkg != packageName && pkg != lastBlockedPkg -> {
+                            lastBlockedPkg = pkg
+                            launchBlockScreen(pkg)
+                        }
+                        // User navigated away from the blocked app — reset so we can block again
+                        pkg != null && pkg !in blocked -> {
+                            lastBlockedPkg = null
+                        }
                     }
                 }
                 delay(POLL_INTERVAL_MS)
@@ -79,18 +94,38 @@ class FocusEnforcementService : Service() {
         }
     }
 
-    private fun detectForegroundApp(usm: UsageStatsManager): String? {
+    /**
+     * Scans UsageEvents from [eventScanFrom] to now, updating [currentForegroundPkg].
+     * Advances [eventScanFrom] to avoid replaying the same events on the next poll.
+     *
+     * Because we track ALL transitions (foreground + background), we always know the
+     * current foreground app even if it hasn't fired an event recently.
+     */
+    private fun updateForegroundState(usm: UsageStatsManager) {
         val now = System.currentTimeMillis()
-        val events = runCatching { usm.queryEvents(now - 2_000, now) }.getOrNull() ?: return null
+        val events = runCatching { usm.queryEvents(eventScanFrom, now) }.getOrNull() ?: return
         val event = UsageEvents.Event()
-        var lastFg: String? = null
+
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
-            if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) {
-                lastFg = event.packageName
+            when (event.eventType) {
+                UsageEvents.Event.MOVE_TO_FOREGROUND -> {
+                    currentForegroundPkg = event.packageName
+                }
+                UsageEvents.Event.MOVE_TO_BACKGROUND -> {
+                    // Only clear if this is still the current foreground app.
+                    // A rapid app switch can produce FG(A) → FG(B) → BG(A) —
+                    // clearing blindly would wrongly null out B.
+                    if (currentForegroundPkg == event.packageName) {
+                        currentForegroundPkg = null
+                    }
+                }
             }
         }
-        return lastFg
+
+        // Advance the scan window — subtract a small overlap to avoid missing events
+        // that land exactly on the boundary due to millisecond rounding.
+        eventScanFrom = now - 200L
     }
 
     private fun launchBlockScreen(blockedPackage: String) {
@@ -101,7 +136,6 @@ class FocusEnforcementService : Service() {
             }
             startActivity(i)
         }
-        // Always also post a heads-up notification as a reliable fallback
         postBlockedNotification(blockedPackage)
     }
 

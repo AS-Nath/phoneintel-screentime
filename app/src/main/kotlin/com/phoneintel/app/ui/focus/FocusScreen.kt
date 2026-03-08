@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -17,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -28,35 +30,23 @@ import com.phoneintel.app.domain.model.InstalledApp
 import com.phoneintel.app.ui.theme.*
 import com.phoneintel.app.util.DateUtil
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FocusScreen(viewModel: FocusViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsState()
 
-    Scaffold(
-        containerColor = BgBase,
-        topBar = {
-            TopAppBar(
-                title = { Text("Focus Mode", fontWeight = FontWeight.SemiBold, color = TextPrimary) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = BgBase)
-            )
-        }
-    ) { padding ->
-        if (state.focusState.isActive) {
-            ActiveFocusView(
-                focusState = state.focusState,
-                onStop = { viewModel.stopFocus() },
-                modifier = Modifier.padding(padding)
-            )
-        } else {
-            SetupFocusView(
-                state = state,
-                onSelectIntent = { viewModel.selectIntent(it) },
-                onToggleApp = { viewModel.toggleApp(it) },
-                onStart = { viewModel.startFocus() },
-                modifier = Modifier.padding(padding)
-            )
-        }
+    // No Scaffold — MainActivity owns it
+    if (state.focusState.isActive) {
+        ActiveFocusView(
+            focusState = state.focusState,
+            onStop = { viewModel.stopFocus() }
+        )
+    } else {
+        SetupFocusView(
+            state = state,
+            onSelectIntent = { viewModel.selectIntent(it) },
+            onToggleApp = { viewModel.toggleApp(it) },
+            onStart = { viewModel.startFocus() }
+        )
     }
 }
 
@@ -65,21 +55,15 @@ fun FocusScreen(viewModel: FocusViewModel = hiltViewModel()) {
 @Composable
 private fun ActiveFocusView(
     focusState: com.phoneintel.app.domain.model.FocusState,
-    onStop: () -> Unit,
-    modifier: Modifier = Modifier
+    onStop: () -> Unit
 ) {
     Column(
-        modifier
-            .fillMaxSize()
-            .padding(24.dp),
+        Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Box(
-            Modifier
-                .size(96.dp)
-                .clip(CircleShape)
-                .background(MintSubtle),
+            Modifier.size(96.dp).clip(CircleShape).background(MintSubtle),
             contentAlignment = Alignment.Center
         ) {
             Text(focusState.intent.emoji, fontSize = 44.sp)
@@ -122,12 +106,18 @@ private fun SetupFocusView(
     state: FocusUiState,
     onSelectIntent: (FocusIntent) -> Unit,
     onToggleApp: (String) -> Unit,
-    onStart: () -> Unit,
-    modifier: Modifier = Modifier
+    onStart: () -> Unit
 ) {
-    LazyColumn(modifier.fillMaxSize()) {
+    var searchQuery by remember { mutableStateOf("") }
 
-        // Headline
+    val filteredApps = remember(state.installedApps, searchQuery) {
+        if (searchQuery.isBlank()) state.installedApps
+        else state.installedApps.filter { it.appName.contains(searchQuery, ignoreCase = true) }
+    }
+
+    LazyColumn(Modifier.fillMaxSize()) {
+
+        // ── Headline ─────────────────────────────────────────────────────
         item {
             Text(
                 "What do you want\nto focus on?",
@@ -140,7 +130,7 @@ private fun SetupFocusView(
             Spacer(Modifier.height(16.dp))
         }
 
-        // Intent grid — 2x2 like Figma
+        // ── Intent grid — 2x2 ────────────────────────────────────────────
         item {
             val intents = FocusIntent.values().toList()
             Column(
@@ -160,7 +150,6 @@ private fun SetupFocusView(
                                 modifier = Modifier.weight(1f)
                             )
                         }
-                        // Pad odd row
                         if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
@@ -168,7 +157,37 @@ private fun SetupFocusView(
             Spacer(Modifier.height(24.dp))
         }
 
-        // Apps to block header
+        // ── Start button — top, above app list ───────────────────────────
+        item {
+            Column(Modifier.padding(horizontal = 20.dp)) {
+                Button(
+                    onClick = onStart,
+                    enabled = state.selectedPackages.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Mint,
+                        contentColor = BgDeep,
+                        disabledContainerColor = MintSubtle,
+                        disabledContentColor = MintDim
+                    )
+                ) {
+                    Text("Start Focusing", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+                if (state.selectedPackages.isEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Select at least one app to block",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextDim,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+
+        // ── Apps header ───────────────────────────────────────────────────
         item {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -183,82 +202,98 @@ private fun SetupFocusView(
                 )
                 if (!state.isLoadingApps) {
                     Text(
-                        "Select All",
+                        "${state.selectedPackages.size} selected",
                         style = MaterialTheme.typography.labelSmall,
                         color = Mint,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.clickable {
-                            // select all — no-op placeholder, could wire to VM
-                        }
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
+        }
+
+        // ── Search bar ────────────────────────────────────────────────────
+        item {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(BgCard)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Search, null, tint = TextDim, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                BasicTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary),
+                    cursorBrush = SolidColor(Mint),
+                    decorationBox = { inner ->
+                        if (searchQuery.isEmpty()) {
+                            Text(
+                                "Search apps…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextDim
+                            )
+                        }
+                        inner()
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                if (searchQuery.isNotEmpty()) {
+                    Icon(
+                        Icons.Default.Close, null,
+                        tint = TextDim,
+                        modifier = Modifier.size(16.dp).clickable { searchQuery = "" }
+                    )
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+
             if (state.isLoadingApps) {
-                Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.fillMaxWidth().padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
                     CircularProgressIndicator(color = Mint, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
                 }
             }
         }
 
-        // App list
+        // ── App list ──────────────────────────────────────────────────────
         if (!state.isLoadingApps) {
-            items(state.installedApps) { app ->
-                AppToggleRow(
-                    app = app,
-                    isSelected = app.packageName in state.selectedPackages,
-                    onToggle = { onToggleApp(app.packageName) }
-                )
+            if (filteredApps.isEmpty()) {
+                item {
+                    Box(
+                        Modifier.fillMaxWidth().padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "No apps match \"$searchQuery\"",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextDim
+                        )
+                    }
+                }
+            } else {
+                items(filteredApps, key = { it.packageName }) { app ->
+                    AppToggleRow(
+                        app = app,
+                        isSelected = app.packageName in state.selectedPackages,
+                        onToggle = { onToggleApp(app.packageName) }
+                    )
+                }
             }
         }
 
-        // CTA
-        item {
-            Spacer(Modifier.height(20.dp))
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                Button(
-                    onClick = onStart,
-                    enabled = state.selectedPackages.isNotEmpty(),
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Mint,
-                        contentColor = BgDeep,
-                        disabledContainerColor = MintSubtle,
-                        disabledContentColor = MintDim
-                    )
-                ) {
-                    Text(
-                        "Start Focusing",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                }
-                if (state.focusState.isActive.not() && state.selectedPackages.isEmpty()) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "Select at least one app to block",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextDim,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-                }
-                // Timer hint from Figma
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    "Ends in 45 minutes at 14:30",  // TODO: wire to actual timer
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextDim,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-            Spacer(Modifier.height(32.dp))
-        }
+        item { Spacer(Modifier.height(32.dp)) }
     }
 }
 
-// ─── Intent Tile ─────────────────────────────────────────────────────────────
-// Matches Figma: outlined tile, selected = filled with subtle mint tint
+// ─── Intent Tile ──────────────────────────────────────────────────────────────
 
 @Composable
 private fun IntentTile(
@@ -270,7 +305,6 @@ private fun IntentTile(
     val bg     = if (selected) MintSubtle else BgCard
     val border = if (selected) Mint else TextDim.copy(alpha = 0.3f)
     val fg     = if (selected) Mint else TextSecondary
-    val icon   = intentIcon(intent)
 
     Row(
         modifier
@@ -282,7 +316,7 @@ private fun IntentTile(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Icon(icon, null, tint = fg, modifier = Modifier.size(18.dp))
+        Icon(intentIcon(intent), null, tint = fg, modifier = Modifier.size(18.dp))
         Text(
             intent.label,
             style = MaterialTheme.typography.bodyMedium,
@@ -293,7 +327,6 @@ private fun IntentTile(
 }
 
 // ─── App Toggle Row ───────────────────────────────────────────────────────────
-// Matches Figma: app icon + name + toggle switch on right
 
 @Composable
 private fun AppToggleRow(app: InstalledApp, isSelected: Boolean, onToggle: () -> Unit) {
@@ -303,19 +336,11 @@ private fun AppToggleRow(app: InstalledApp, isSelected: Boolean, onToggle: () ->
             .padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // App icon placeholder
         Box(
-            Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(BgCard),
+            Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(BgCard),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                Icons.Default.Android, null,
-                tint = TextSecondary,
-                modifier = Modifier.size(20.dp)
-            )
+            Icon(Icons.Default.Android, null, tint = TextSecondary, modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(14.dp))
         Text(

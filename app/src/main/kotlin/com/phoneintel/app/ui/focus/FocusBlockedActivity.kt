@@ -1,5 +1,6 @@
 package com.phoneintel.app.ui.focus
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -16,21 +17,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.phoneintel.app.MainActivity
 import com.phoneintel.app.data.repository.FocusRepository
+import com.phoneintel.app.service.FocusEnforcementService
 import com.phoneintel.app.ui.theme.CoralAccent
 import com.phoneintel.app.ui.theme.IndigoBase
 import com.phoneintel.app.ui.theme.PhoneIntelTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
-import com.phoneintel.app.service.FocusEnforcementService
-
 
 /**
  * Fullscreen overlay shown when a blocked app is opened during a Focus session.
  * Launched by FocusEnforcementService with FLAG_ACTIVITY_NEW_TASK.
  *
- * The user can either go back (previous app / home) or end their focus session.
- * excludeFromRecents = true keeps this out of the recents switcher.
+ * Stay Focused  → returns the user to PhoneIntel (MainActivity)
+ * End Focus     → stops focus and finishes, letting the blocked app surface naturally
  */
 @AndroidEntryPoint
 class FocusBlockedActivity : ComponentActivity() {
@@ -40,19 +41,31 @@ class FocusBlockedActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val blockedPkg = intent.getStringExtra(EXTRA_BLOCKED_PKG) ?: "this app"
+        val appLabel = runCatching {
+            packageManager.getApplicationLabel(
+                packageManager.getApplicationInfo(blockedPkg, 0)
+            ).toString()
+        }.getOrDefault(blockedPkg.substringAfterLast('.').replaceFirstChar { it.uppercase() })
 
         setContent {
             PhoneIntelTheme {
                 FocusBlockedScreen(
-                    blockedPackage = blockedPkg,
+                    blockedPackage = appLabel,
                     focusIntent = focusRepository.focusState.value.intent.label,
                     focusEmoji = focusRepository.focusState.value.intent.emoji,
-                    onGoBack = { finish() },
+                    onGoBack = {
+                        // Send the user to PhoneIntel, not back to the blocked app
+                        startActivity(
+                            Intent(this@FocusBlockedActivity, MainActivity::class.java).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                            }
+                        )
+                        finish()
+                    },
                     onEndFocus = {
                         focusRepository.stopFocus()
-                        this@FocusBlockedActivity.stopService(
-                            android.content.Intent(this@FocusBlockedActivity, FocusEnforcementService::class.java)
-                        )
+                        stopService(Intent(this@FocusBlockedActivity, FocusEnforcementService::class.java))
+                        // Just dismiss the overlay — the now-unblocked app surfaces naturally
                         finish()
                     }
                 )
@@ -85,7 +98,6 @@ private fun FocusBlockedScreen(
                 .padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Big block icon
             Box(
                 Modifier.size(100.dp).clip(CircleShape).background(CoralAccent.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
@@ -94,13 +106,17 @@ private fun FocusBlockedScreen(
             }
             Spacer(Modifier.height(28.dp))
 
-            Text("This app is blocked", style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold, color = Color.White, textAlign = TextAlign.Center)
+            Text(
+                "This app is blocked",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
             Spacer(Modifier.height(12.dp))
 
-            val appName = blockedPackage.substringAfterLast('.').replaceFirstChar { it.uppercase() }
             Text(
-                "$appName is blocked during your $focusIntent focus session.",
+                "$blockedPackage is blocked during your $focusIntent focus session.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = Color.White.copy(alpha = 0.7f),
                 textAlign = TextAlign.Center
@@ -128,8 +144,11 @@ private fun FocusBlockedScreen(
                 onClick = onEndFocus,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("End Focus Session", color = Color.White.copy(alpha = 0.5f),
-                    style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "End Focus Session",
+                    color = Color.White.copy(alpha = 0.5f),
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
         }
     }
