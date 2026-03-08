@@ -32,7 +32,8 @@ data class DashboardUiState(
     val healthScore: Int = 0,
     val healthGrade: String = "—",
     // Focus state
-    val focusState: FocusState = FocusState()
+    val focusState: FocusState = FocusState(),
+    val topInsight: InsightCard? = null,
 )
 
 @HiltViewModel
@@ -42,7 +43,8 @@ class DashboardViewModel @Inject constructor(
     private val networkRepository: NetworkRepository,
     private val batteryRepository: BatteryRepository,
     private val unlockSessionRepository: UnlockSessionRepository,
-    private val focusRepository: FocusRepository
+    private val focusRepository: FocusRepository,
+    private val insightRepository: InsightRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DashboardUiState())
@@ -98,7 +100,8 @@ class DashboardViewModel @Inject constructor(
         viewModelScope.launch {
             val trend = appUsageRepository.getWeeklyTrend()
             _uiState.update { it.copy(weeklyTrend = trend) }
-
+            val insights = runCatching { insightRepository.getInsights() }.getOrDefault(emptyList())
+            _uiState.update { it.copy(topInsight = insights.firstOrNull()) }
             // Compute lightweight health score from today's data
             recomputeHealthScore()
         }

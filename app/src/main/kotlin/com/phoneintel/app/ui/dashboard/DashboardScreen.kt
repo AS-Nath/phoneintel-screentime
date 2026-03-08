@@ -34,6 +34,8 @@ import com.phoneintel.app.ui.Screen
 import com.phoneintel.app.ui.components.*
 import com.phoneintel.app.ui.theme.*
 import com.phoneintel.app.util.DateUtil
+import com.phoneintel.app.domain.model.InsightCard
+import com.phoneintel.app.domain.model.InsightSeverity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,6 +88,17 @@ fun DashboardScreen(
                     isCharging = state.isCharging,
                     onClick = { navController.navigate(Screen.PhoneHealth.route) }
                 )
+            }
+
+            // After
+            val topInsight = state.topInsight
+            if (topInsight != null) {
+                item {
+                    DashboardInsightTeaser(
+                        insight = topInsight,
+                        onClick = { navController.navigate(Screen.Insights.route) }
+                    )
+                }
             }
 
             // ── Active focus banner (shown when focus is on) ─────────────────
@@ -307,9 +320,10 @@ private fun QuickActionsRow(navController: NavController) {
             Modifier.weight(1f)) { navController.navigate(Screen.Notifications.route) }
         ActionCard("Network", Icons.Outlined.NetworkWifi, ChartGreen,
             Modifier.weight(1f)) { navController.navigate(Screen.Network.route) }
+        ActionCard("Insights", Icons.Default.Lightbulb, ChartAmber,
+            Modifier.weight(1f)) { navController.navigate(Screen.Insights.route) }
     }
 }
-
 @Composable
 private fun ActionCard(
     label: String, icon: ImageVector, color: Color,
@@ -380,6 +394,55 @@ private fun AppUsageRow(app: AppUsageStat, maxMs: Long) {
                 Box(Modifier.fillMaxWidth(frac).height(4.dp).clip(RoundedCornerShape(2.dp))
                     .background(IndigoBase))
             }
+        }
+    }
+}
+
+@Composable
+private fun DashboardInsightTeaser(insight: InsightCard, onClick: () -> Unit) {
+    val accentColor = when (insight.severity) {
+        InsightSeverity.ALERT -> CoralAccent
+        InsightSeverity.WARN  -> ChartAmber
+        InsightSeverity.INFO  -> ChartGreen
+    }
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .background(accentColor, RoundedCornerShape(4.dp))
+            )
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Insight",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = accentColor,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    insight.headline,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                Icons.Default.ChevronRight, null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
