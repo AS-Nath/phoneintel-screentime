@@ -63,20 +63,10 @@ Progress happens in steps, not overnight. PhoneIntel is built for the long game.
 - See which apps are most aggressively competing for your attention
 - Notification content is never stored — only counts and timestamps
 
-### Network Usage
-- Per-app Wi-Fi vs mobile data breakdown
-- Upload and download split
-- Range filters: today, 7 days, 30 days
-
 ### Battery Analytics
 - Current level and charging status
 - 24-hour bar chart colour-coded by level
 - 7-day average battery level
-
-### Year-End Recap
-- Total screen time, notifications, and data used for the year
-- Top 5 apps of the year, daily averages, longest streak
-- Most productive month and fun stats — all derived locally from your own data
 
 ---
 
