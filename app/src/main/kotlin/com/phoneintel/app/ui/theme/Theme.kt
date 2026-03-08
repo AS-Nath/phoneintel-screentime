@@ -1,8 +1,6 @@
 package com.phoneintel.app.ui.theme
 
 import android.app.Activity
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
@@ -11,81 +9,75 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-// ─── Brand Colors ─────────────────────────────────────────────────────────────
+// ─── Figma Design System ──────────────────────────────────────────────────────
+// Dark forest green palette — not black, not indigo. Everything is intentional.
 
-val IndigoBase = Color(0xFF5C6BC0)
-val IndigoDark = Color(0xFF3949AB)
-val IndigoLight = Color(0xFF9FA8DA)
-val TealAccent = Color(0xFF26C6DA)
-val CoralAccent = Color(0xFFFF7043)
-val AmberAccent = Color(0xFFFFCA28)
-val SurfaceDark = Color(0xFF121212)
-val SurfaceVariantDark = Color(0xFF1E1E2E)
-val CardDark = Color(0xFF252535)
+// Backgrounds
+val BgDeep       = Color(0xFF081510)   // deepest background
+val BgBase       = Color(0xFF0A1A12)   // main background
+val BgCard       = Color(0xFF0F2218)   // card surface
+val BgCardLight  = Color(0xFF152E20)   // elevated card / selected state
 
-// Chart colors
-val ChartBlue = Color(0xFF5C6BC0)
-val ChartTeal = Color(0xFF26C6DA)
-val ChartCoral = Color(0xFFFF7043)
-val ChartAmber = Color(0xFFFFCA28)
-val ChartGreen = Color(0xFF66BB6A)
-val ChartPurple = Color(0xFFAB47BC)
+// Accent — mint green, the single brand colour
+val Mint         = Color(0xFF3DEBA8)   // primary CTA, scores, highlights
+val MintDim      = Color(0xFF1A7A54)   // muted mint for secondary elements
+val MintSubtle   = Color(0xFF0F3D28)   // mint tint backgrounds
 
-private val DarkColorScheme = darkColorScheme(
-    primary = IndigoBase,
-    onPrimary = Color.White,
-    primaryContainer = IndigoDark,
-    onPrimaryContainer = IndigoLight,
-    secondary = TealAccent,
-    onSecondary = Color.Black,
-    tertiary = CoralAccent,
-    background = SurfaceDark,
-    surface = SurfaceVariantDark,
-    surfaceVariant = CardDark,
-    onBackground = Color(0xFFE8E8F0),
-    onSurface = Color(0xFFE8E8F0),
-    onSurfaceVariant = Color(0xFFB0B0C8)
-)
+// Text
+val TextPrimary   = Color(0xFFEEF2EE)  // near-white
+val TextSecondary = Color(0xFF7A9A84)  // muted green-grey
+val TextDim       = Color(0xFF3D5C47)  // very muted, labels
 
-private val LightColorScheme = lightColorScheme(
-    primary = IndigoDark,
-    onPrimary = Color.White,
-    primaryContainer = IndigoLight,
-    onPrimaryContainer = IndigoDark,
-    secondary = Color(0xFF0097A7),
-    onSecondary = Color.White,
-    tertiary = CoralAccent,
-    background = Color(0xFFF5F5FA),
-    surface = Color.White,
-    surfaceVariant = Color(0xFFEEEEF8),
-    onBackground = Color(0xFF1A1A2E),
-    onSurface = Color(0xFF1A1A2E),
-    onSurfaceVariant = Color(0xFF4A4A6A)
+// Semantic
+val CoralAccent  = Color(0xFFFF6B6B)   // alert / destructive
+val AmberAccent  = Color(0xFFFFB547)   // warning
+val ChartAmber   = Color(0xFFFFB547)
+val ChartGreen   = Mint
+val ChartCoral   = CoralAccent
+val ChartPurple  = Color(0xFFAB7FE8)
+val ChartBlue    = Color(0xFF5BA4CF)
+val ChartTeal    = Mint
+
+// Legacy aliases so existing screens that import these don't break
+val IndigoBase   = Color(0xFF3DEBA8)
+val IndigoDark   = Color(0xFF1A7A54)
+val IndigoLight  = Color(0xFF7DCCA8)
+val TealAccent   = Mint
+
+// ─── Color Scheme ─────────────────────────────────────────────────────────────
+
+private val PhoneIntelColorScheme = darkColorScheme(
+    primary             = Mint,
+    onPrimary           = BgDeep,
+    primaryContainer    = MintSubtle,
+    onPrimaryContainer  = Mint,
+    secondary           = MintDim,
+    onSecondary         = TextPrimary,
+    tertiary            = CoralAccent,
+    background          = BgBase,
+    surface             = BgCard,
+    surfaceVariant      = BgCardLight,
+    onBackground        = TextPrimary,
+    onSurface           = TextPrimary,
+    onSurfaceVariant    = TextSecondary,
+    outline             = TextDim
 )
 
 @Composable
 fun PhoneIntelTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            // Intentionally disabled — we want consistent branding
-            if (darkTheme) DarkColorScheme else LightColorScheme
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            window.statusBarColor = BgBase.toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
         }
     }
-
-    MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
+    MaterialTheme(
+        colorScheme = PhoneIntelColorScheme,
+        typography = Typography,
+        content = content
+    )
 }

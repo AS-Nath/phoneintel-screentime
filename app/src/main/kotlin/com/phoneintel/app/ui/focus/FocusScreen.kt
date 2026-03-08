@@ -1,6 +1,7 @@
 package com.phoneintel.app.ui.focus
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,12 +10,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -31,10 +34,11 @@ fun FocusScreen(viewModel: FocusViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsState()
 
     Scaffold(
+        containerColor = BgBase,
         topBar = {
             TopAppBar(
-                title = { Text("Focus Mode", fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                title = { Text("Focus Mode", fontWeight = FontWeight.SemiBold, color = TextPrimary) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = BgBase)
             )
         }
     ) { padding ->
@@ -64,46 +68,49 @@ private fun ActiveFocusView(
     onStop: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val elapsed = remember(focusState.startedAt) {
-        System.currentTimeMillis() - focusState.startedAt
-    }
-
     Column(
-        modifier.fillMaxSize().padding(24.dp),
+        modifier
+            .fillMaxSize()
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        // Big intent emoji
         Box(
-            Modifier.size(100.dp).clip(CircleShape)
-                .background(IndigoBase.copy(alpha = 0.15f)),
+            Modifier
+                .size(96.dp)
+                .clip(CircleShape)
+                .background(MintSubtle),
             contentAlignment = Alignment.Center
         ) {
-            Text(focusState.intent.emoji, fontSize = 48.sp)
+            Text(focusState.intent.emoji, fontSize = 44.sp)
         }
-        Spacer(Modifier.height(24.dp))
-        Text("${focusState.intent.label} Focus", style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(28.dp))
+        Text(
+            "${focusState.intent.label} Focus",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary
+        )
         Spacer(Modifier.height(8.dp))
-        Text("Session started ${DateUtil.formatDate(focusState.startedAt, "h:mm a")}",
+        Text(
+            "Started at ${DateUtil.formatDate(focusState.startedAt, "h:mm a")}",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+            color = TextSecondary
+        )
         Spacer(Modifier.height(4.dp))
-        Text("${focusState.blockedPackages.size} apps blocked",
+        Text(
+            "${focusState.blockedPackages.size} apps blocked",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-        Spacer(Modifier.height(40.dp))
-
+            color = TextDim
+        )
+        Spacer(Modifier.height(48.dp))
         Button(
             onClick = onStop,
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            shape = RoundedCornerShape(16.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = CoralAccent)
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            shape = RoundedCornerShape(28.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = CoralAccent, contentColor = Color.White)
         ) {
-            Icon(Icons.Default.Stop, null, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(8.dp))
-            Text("End Focus Session", fontWeight = FontWeight.SemiBold)
+            Text("End Focus Session", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         }
     }
 }
@@ -119,48 +126,85 @@ private fun SetupFocusView(
     modifier: Modifier = Modifier
 ) {
     LazyColumn(modifier.fillMaxSize()) {
+
+        // Headline
         item {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Text("What are you focusing on?",
-                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(12.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FocusIntent.values().forEach { intent ->
-                        IntentChip(
-                            intent = intent,
-                            selected = state.selectedIntent == intent,
-                            onClick = { onSelectIntent(intent) },
-                            modifier = Modifier.weight(1f)
-                        )
+            Text(
+                "What do you want\nto focus on?",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                lineHeight = 36.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+            )
+            Spacer(Modifier.height(16.dp))
+        }
+
+        // Intent grid — 2x2 like Figma
+        item {
+            val intents = FocusIntent.values().toList()
+            Column(
+                Modifier.padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                intents.chunked(2).forEach { row ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        row.forEach { intent ->
+                            IntentTile(
+                                intent = intent,
+                                selected = state.selectedIntent == intent,
+                                onClick = { onSelectIntent(intent) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        // Pad odd row
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
                     }
                 }
             }
+            Spacer(Modifier.height(24.dp))
         }
 
+        // Apps to block header
         item {
-            Spacer(Modifier.height(8.dp))
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text("Choose apps to block", style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold)
-                    Text("${state.selectedPackages.size} selected",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (state.isLoadingApps) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text(
+                    "CHOOSE APPS TO BLOCK",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary,
+                    letterSpacing = 1.5.sp
+                )
+                if (!state.isLoadingApps) {
+                    Text(
+                        "Select All",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Mint,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.clickable {
+                            // select all — no-op placeholder, could wire to VM
+                        }
+                    )
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
+            if (state.isLoadingApps) {
+                Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Mint, strokeWidth = 2.dp, modifier = Modifier.size(24.dp))
+                }
+            }
         }
 
+        // App list
         if (!state.isLoadingApps) {
             items(state.installedApps) { app ->
-                AppPickerRow(
+                AppToggleRow(
                     app = app,
                     isSelected = app.packageName in state.selectedPackages,
                     onToggle = { onToggleApp(app.packageName) }
@@ -168,94 +212,138 @@ private fun SetupFocusView(
             }
         }
 
+        // CTA
         item {
-            Spacer(Modifier.height(16.dp))
-            Button(
-                onClick = onStart,
-                enabled = state.selectedPackages.isNotEmpty(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .height(52.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = IndigoBase)
-            ) {
+            Spacer(Modifier.height(20.dp))
+            Column(Modifier.padding(horizontal = 20.dp)) {
+                Button(
+                    onClick = onStart,
+                    enabled = state.selectedPackages.isNotEmpty(),
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Mint,
+                        contentColor = BgDeep,
+                        disabledContainerColor = MintSubtle,
+                        disabledContentColor = MintDim
+                    )
+                ) {
+                    Text(
+                        "Start Focusing",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                }
+                if (state.focusState.isActive.not() && state.selectedPackages.isEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Select at least one app to block",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextDim,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+                }
+                // Timer hint from Figma
+                Spacer(Modifier.height(10.dp))
                 Text(
-                    "${state.selectedIntent.emoji}  Start ${state.selectedIntent.label} Focus",
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            if (state.selectedPackages.isEmpty()) {
-                Text(
-                    "Select at least one app to block",
+                    "Ends in 45 minutes at 14:30",  // TODO: wire to actual timer
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                    color = TextDim,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(32.dp))
         }
     }
 }
 
+// ─── Intent Tile ─────────────────────────────────────────────────────────────
+// Matches Figma: outlined tile, selected = filled with subtle mint tint
+
 @Composable
-private fun IntentChip(
+private fun IntentTile(
     intent: FocusIntent,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val bg = if (selected) IndigoBase else MaterialTheme.colorScheme.surfaceVariant
-    val fg = if (selected) Color.White else MaterialTheme.colorScheme.onSurface
+    val bg     = if (selected) MintSubtle else BgCard
+    val border = if (selected) Mint else TextDim.copy(alpha = 0.3f)
+    val fg     = if (selected) Mint else TextSecondary
+    val icon   = intentIcon(intent)
 
-    Column(
+    Row(
         modifier
             .clip(RoundedCornerShape(14.dp))
             .background(bg)
+            .border(1.dp, border, RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(intent.emoji, fontSize = 22.sp)
-        Spacer(Modifier.height(4.dp))
-        Text(intent.label, style = MaterialTheme.typography.labelSmall,
-            color = fg, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal)
+        Icon(icon, null, tint = fg, modifier = Modifier.size(18.dp))
+        Text(
+            intent.label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) TextPrimary else TextSecondary
+        )
     }
 }
 
+// ─── App Toggle Row ───────────────────────────────────────────────────────────
+// Matches Figma: app icon + name + toggle switch on right
+
 @Composable
-private fun AppPickerRow(app: InstalledApp, isSelected: Boolean, onToggle: () -> Unit) {
+private fun AppToggleRow(app: InstalledApp, isSelected: Boolean, onToggle: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Checkbox(
-            checked = isSelected,
-            onCheckedChange = { onToggle() },
-            colors = CheckboxDefaults.colors(checkedColor = IndigoBase)
-        )
-        Spacer(Modifier.width(8.dp))
+        // App icon placeholder
         Box(
-            Modifier.size(36.dp).clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+            Modifier
+                .size(38.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(BgCard),
             contentAlignment = Alignment.Center
         ) {
-            Icon(Icons.Default.Android, null, tint = IndigoBase.copy(alpha = 0.7f),
-                modifier = Modifier.size(20.dp))
+            Icon(
+                Icons.Default.Android, null,
+                tint = TextSecondary,
+                modifier = Modifier.size(20.dp)
+            )
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(14.dp))
         Text(
             app.appName,
             style = MaterialTheme.typography.bodyMedium,
+            color = TextPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
-        if (isSelected) {
-            Icon(Icons.Default.Check, null, tint = IndigoBase, modifier = Modifier.size(16.dp))
-        }
+        Switch(
+            checked = isSelected,
+            onCheckedChange = { onToggle() },
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = BgDeep,
+                checkedTrackColor = Mint,
+                uncheckedThumbColor = TextDim,
+                uncheckedTrackColor = BgCard,
+                uncheckedBorderColor = TextDim.copy(alpha = 0.3f)
+            )
+        )
     }
+}
+
+private fun intentIcon(intent: FocusIntent): ImageVector = when (intent) {
+    FocusIntent.STUDY  -> Icons.Outlined.School
+    FocusIntent.WORK   -> Icons.Outlined.Work
+    FocusIntent.SLEEP  -> Icons.Outlined.Bedtime
+    FocusIntent.FAMILY -> Icons.Outlined.FamilyRestroom
+    FocusIntent.CUSTOM -> Icons.Outlined.Tune
 }
