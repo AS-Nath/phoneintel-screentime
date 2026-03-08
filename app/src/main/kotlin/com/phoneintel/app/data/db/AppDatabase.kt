@@ -13,9 +13,10 @@ import com.phoneintel.app.data.db.entities.*
         BluetoothEventEntity::class,
         BatterySnapshotEntity::class,
         DailySummaryEntity::class,
-        UnlockSessionEntity::class
+        UnlockSessionEntity::class,
+        XpEventEntity::class          // ← new
     ],
-    version = 2,
+    version = 3,                      // ← bumped from 2
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -26,6 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun batteryDao(): BatteryDao
     abstract fun dailySummaryDao(): DailySummaryDao
     abstract fun unlockSessionDao(): UnlockSessionDao
+    abstract fun xpDao(): XpDao                       // ← new
 
     companion object {
         const val DATABASE_NAME = "phoneintel.db"

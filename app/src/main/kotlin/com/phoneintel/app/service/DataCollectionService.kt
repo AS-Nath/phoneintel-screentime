@@ -27,6 +27,8 @@ import com.phoneintel.app.data.repository.BatteryRepository
 import com.phoneintel.app.data.repository.BluetoothRepository
 import com.phoneintel.app.data.repository.NetworkRepository
 import com.phoneintel.app.data.repository.UnlockSessionRepository
+import com.phoneintel.app.data.repository.XpRepository
+import com.phoneintel.app.domain.model.PhoneHealthScore
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import javax.inject.Inject
@@ -39,6 +41,7 @@ class DataCollectionService : Service() {
     @Inject lateinit var batteryRepository: BatteryRepository
     @Inject lateinit var bluetoothRepository: BluetoothRepository
     @Inject lateinit var unlockSessionRepository: UnlockSessionRepository
+    @Inject lateinit var xpRepository: XpRepository
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var syncJob: Job? = null
@@ -229,9 +232,42 @@ class DataCollectionService : Service() {
                     .onFailure { Log.e(TAG, "syncUsageStats failed", it) }
                 runCatching { networkRepository.syncNetworkStats() }
                     .onFailure { Log.e(TAG, "syncNetworkStats failed", it) }
+                runCatching { tickXp() }
+                    .onFailure { Log.e(TAG, "tickXp failed", it) }
                 delay(SYNC_INTERVAL_MS)
             }
         }
+    }
+
+    // ─── XP Tick ──────────────────────────────────────────────────────────────
+    // Called every 15-minute sync. XpRepository guards against more than one
+    // award per hour internally, so this is safe to call frequently.
+    private suspend fun tickXp() {
+        val startOfDay = com.phoneintel.app.util.DateUtil.startOfDay()
+        val sessions = unlockSessionRepository.getCompletedToday()
+        val totalScreenTimeMs = appUsageRepository.getAllSince(startOfDay)
+            .sumOf { it.totalForegroundMs }
+
+        // Night usage: unlocks between 23:00 and 06:00
+        val cal = java.util.Calendar.getInstance()
+        val nightMs = sessions.filter {
+            cal.timeInMillis = it.unlockTime
+            val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+            hour >= 23 || hour < 6
+        }.sumOf { it.durationMs }
+
+        val longestSession = sessions.maxOfOrNull { it.durationMs } ?: 0L
+        val unlockCount = sessions.size
+
+        val score = PhoneHealthScore.compute(
+            totalScreenTimeMs = totalScreenTimeMs,
+            nightUsageMs = nightMs,
+            unlockCount = unlockCount,
+            longestSessionMs = longestSession,
+            notificationCount = 0   // not used in scoring (removed earlier)
+        ).score
+
+        xpRepository.recordHealthTick(score)
     }
 
     // ─── Mindful Unlock Notification ──────────────────────────────────────────

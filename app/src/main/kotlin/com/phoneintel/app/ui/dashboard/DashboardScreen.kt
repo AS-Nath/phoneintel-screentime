@@ -1,5 +1,7 @@
 package com.phoneintel.app.ui.dashboard
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -30,6 +32,7 @@ import com.phoneintel.app.domain.model.AppUsageStat
 import com.phoneintel.app.domain.model.DailyUsageSummary
 import com.phoneintel.app.domain.model.InsightCard
 import com.phoneintel.app.domain.model.InsightSeverity
+import com.phoneintel.app.domain.model.XpState
 import com.phoneintel.app.ui.Screen
 import com.phoneintel.app.ui.theme.*
 import com.phoneintel.app.util.DateUtil
@@ -109,6 +112,12 @@ fun DashboardScreen(
             }
         }
 
+        // ── XP / Level card ──────────────────────────────────────────────
+        item {
+            XpCard(state.xpState)
+            Spacer(Modifier.height(16.dp))
+        }
+
         // ── Insight strip ────────────────────────────────────────────────
         val topInsight = state.topInsight
         if (topInsight != null) {
@@ -166,6 +175,105 @@ fun DashboardScreen(
             }
             item { Spacer(Modifier.height(8.dp)) }
         }
+    }
+}
+
+// ─── XP Card ─────────────────────────────────────────────────────────────────
+
+@Composable
+private fun XpCard(xp: XpState) {
+    val animatedProgress by animateFloatAsState(
+        targetValue = xp.progressFraction,
+        animationSpec = tween(800),
+        label = "xpProgress"
+    )
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(BgCard)
+            .padding(horizontal = 18.dp, vertical = 14.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Level badge
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(MintSubtle),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "${xp.level}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Mint
+                    )
+                }
+                Column {
+                    Text(
+                        "Level ${xp.level}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        levelTitle(xp.level),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary
+                    )
+                }
+            }
+
+            // Total XP
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    "${xp.totalXp} XP",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Mint
+                )
+                Text(
+                    "${xp.currentLevelXp} / ${xp.nextLevelXp}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TextSecondary
+                )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        // Progress bar
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(BgBase)
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(animatedProgress)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Mint)
+            )
+        }
+
+        Spacer(Modifier.height(6.dp))
+
+        Text(
+            "${xp.nextLevelXp - xp.currentLevelXp} XP to level ${xp.level + 1}",
+            style = MaterialTheme.typography.labelSmall,
+            color = TextDim
+        )
     }
 }
 
@@ -310,11 +418,11 @@ private fun AppRow(app: AppUsageStat, maxMs: Long) {
 @Composable
 fun PhoneIntelBottomNav(navController: NavController, currentRoute: String) {
     val items = listOf(
-        Triple(Screen.Dashboard.route,     Icons.Default.Home,            "Home"),
-        Triple(Screen.PhoneHealth.route,   Icons.Outlined.BarChart,       "Stats"),
-        Triple(Screen.Focus.route,         Icons.Outlined.DoNotDisturb,   "Focus"),
-        Triple(Screen.Notifications.route, Icons.Outlined.Notifications,  "Alerts"),
-        Triple(Screen.Insights.route,      Icons.Outlined.Lightbulb,      "Insights"),
+        Triple(Screen.Dashboard.route,     Icons.Default.Home,           "Home"),
+        Triple(Screen.PhoneHealth.route,   Icons.Outlined.BarChart,      "Stats"),
+        Triple(Screen.Focus.route,         Icons.Outlined.DoNotDisturb,  "Focus"),
+        Triple(Screen.Notifications.route, Icons.Outlined.Notifications, "Alerts"),
+        Triple(Screen.Insights.route,      Icons.Outlined.Lightbulb,     "Insights"),
     )
     NavigationBar(containerColor = BgDeep, tonalElevation = 0.dp) {
         items.forEach { (route, icon, label) ->
@@ -341,4 +449,20 @@ fun PhoneIntelBottomNav(navController: NavController, currentRoute: String) {
             )
         }
     }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+private fun levelTitle(level: Int): String = when (level) {
+    0    -> "Newcomer"
+    1    -> "Aware"
+    2    -> "Mindful"
+    3    -> "Focused"
+    4    -> "Disciplined"
+    5    -> "Intentional"
+    6    -> "Balanced"
+    7    -> "Clear-headed"
+    8    -> "Present"
+    9    -> "Enlightened"
+    else -> "Master"
 }

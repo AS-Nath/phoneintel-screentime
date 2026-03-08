@@ -108,3 +108,19 @@ data class DailySummaryEntity(
     val bluetoothConnections: Int,
     val topApp: String?
 )
+
+// ─── XP Ledger ────────────────────────────────────────────────────────────────
+
+enum class XpEventType {
+    HEALTH_SCORE_TICK,
+    FOCUS_CANCEL_PENALTY
+}
+
+@Entity(tableName = "xp_ledger")
+data class XpEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val timestamp: Long,
+    val type: String,
+    val amount: Int,
+    val note: String = ""
+)

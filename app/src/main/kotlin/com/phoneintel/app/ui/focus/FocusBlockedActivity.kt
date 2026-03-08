@@ -19,24 +19,28 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.phoneintel.app.MainActivity
 import com.phoneintel.app.data.repository.FocusRepository
+import com.phoneintel.app.data.repository.XpRepository
 import com.phoneintel.app.service.FocusEnforcementService
 import com.phoneintel.app.ui.theme.CoralAccent
 import com.phoneintel.app.ui.theme.IndigoBase
 import com.phoneintel.app.ui.theme.PhoneIntelTheme
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
  * Fullscreen overlay shown when a blocked app is opened during a Focus session.
- * Launched by FocusEnforcementService with FLAG_ACTIVITY_NEW_TASK.
  *
- * Stay Focused  → returns the user to PhoneIntel (MainActivity)
- * End Focus     → stops focus and finishes, letting the blocked app surface naturally
+ * Stay Focused     → sends user to PhoneIntel (MainActivity), no XP change
+ * End Focus Session → stops focus, user lands back in the blocked app, -50 XP penalty
  */
 @AndroidEntryPoint
 class FocusBlockedActivity : ComponentActivity() {
 
     @Inject lateinit var focusRepository: FocusRepository
+    @Inject lateinit var xpRepository: XpRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,7 +58,7 @@ class FocusBlockedActivity : ComponentActivity() {
                     focusIntent = focusRepository.focusState.value.intent.label,
                     focusEmoji = focusRepository.focusState.value.intent.emoji,
                     onGoBack = {
-                        // Send the user to PhoneIntel, not back to the blocked app
+                        // Return to PhoneIntel — no XP change
                         startActivity(
                             Intent(this@FocusBlockedActivity, MainActivity::class.java).apply {
                                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -63,9 +67,13 @@ class FocusBlockedActivity : ComponentActivity() {
                         finish()
                     },
                     onEndFocus = {
+                        // Deduct XP — this is the only penalty trigger
+                        CoroutineScope(Dispatchers.IO).launch {
+                            xpRepository.recordFocusCancelPenalty(appLabel)
+                        }
                         focusRepository.stopFocus()
                         stopService(Intent(this@FocusBlockedActivity, FocusEnforcementService::class.java))
-                        // Just dismiss the overlay — the now-unblocked app surfaces naturally
+                        // Finish without redirecting — blocked app surfaces naturally
                         finish()
                     }
                 )
@@ -145,7 +153,7 @@ private fun FocusBlockedScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    "End Focus Session",
+                    "End Focus Session  (−50 XP)",
                     color = Color.White.copy(alpha = 0.5f),
                     style = MaterialTheme.typography.bodyMedium
                 )

@@ -28,12 +28,15 @@ data class DashboardUiState(
     // Battery
     val batteryLevel: Int = 0,
     val isCharging: Boolean = false,
-    // Health score (lightweight version for dashboard — full breakdown on HealthScreen)
+    // Health score
     val healthScore: Int = 0,
     val healthGrade: String = "—",
     // Focus state
     val focusState: FocusState = FocusState(),
+    // Insights
     val topInsight: InsightCard? = null,
+    // XP / level
+    val xpState: XpState = XpState.from(0)
 )
 
 @HiltViewModel
@@ -45,6 +48,7 @@ class DashboardViewModel @Inject constructor(
     private val unlockSessionRepository: UnlockSessionRepository,
     private val focusRepository: FocusRepository,
     private val insightRepository: InsightRepository,
+    private val xpRepository: XpRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(DashboardUiState())
@@ -94,16 +98,21 @@ class DashboardViewModel @Inject constructor(
         focusRepository.focusState
             .onEach { fs -> _uiState.update { it.copy(focusState = fs) } }
             .launchIn(viewModelScope)
+
+        // XP — live, updates whenever a new event is inserted
+        xpRepository.xpStateFlow
+            .onEach { xp -> _uiState.update { it.copy(xpState = xp) } }
+            .launchIn(viewModelScope)
     }
 
     private fun loadComputedData() {
         viewModelScope.launch {
             val trend = appUsageRepository.getWeeklyTrend()
             _uiState.update { it.copy(weeklyTrend = trend) }
+            recomputeHealthScore()
+
             val insights = runCatching { insightRepository.getInsights() }.getOrDefault(emptyList())
             _uiState.update { it.copy(topInsight = insights.firstOrNull()) }
-            // Compute lightweight health score from today's data
-            recomputeHealthScore()
         }
     }
 

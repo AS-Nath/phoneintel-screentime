@@ -29,4 +29,5 @@ object DatabaseModule {
     @Provides fun provideBatteryDao(db: AppDatabase): BatteryDao = db.batteryDao()
     @Provides fun provideDailySummaryDao(db: AppDatabase): DailySummaryDao = db.dailySummaryDao()
     @Provides fun provideUnlockSessionDao(db: AppDatabase): UnlockSessionDao = db.unlockSessionDao()
+    @Provides fun provideXpDao(db: AppDatabase): XpDao = db.xpDao()   // ← new
 }

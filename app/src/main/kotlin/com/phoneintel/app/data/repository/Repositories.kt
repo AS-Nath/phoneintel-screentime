@@ -139,19 +139,15 @@ class AppUsageRepository @Inject constructor(
         }.sortedBy { it.date }
     }
 
+    suspend fun getAllSince(fromDate: Long): List<AppUsageEntity> =
+        withContext(Dispatchers.IO) { dao.getAllSince(fromDate) }
+
     private fun loadIcon(packageName: String) = runCatching {
         pm.getApplicationIcon(packageName)
     }.getOrNull()
 
     private fun AppUsageEntity.toDomain(icon: android.graphics.drawable.Drawable?) =
         AppUsageStat(packageName, appName, totalForegroundMs, launchCount, lastUsed, icon)
-
-    suspend fun getRawUsageSince(fromDate: Long): List<AppUsageEntity> =
-        withContext(Dispatchers.IO) { dao.getAllSince(fromDate) }
-
-    suspend fun getAllSince(fromDate: Long): List<AppUsageEntity> =
-        withContext(Dispatchers.IO) { dao.getAllSince(fromDate) }
-
 }
 
 // ─── Notification Repository ──────────────────────────────────────────────────
@@ -176,7 +172,6 @@ class NotificationRepository @Inject constructor(
 
     suspend fun getRawSince(since: Long): List<NotificationEventEntity> =
         withContext(Dispatchers.IO) { dao.getRange(since, System.currentTimeMillis()) }
-
 }
 
 // ─── Network Repository ───────────────────────────────────────────────────────
@@ -281,7 +276,6 @@ class NetworkRepository @Inject constructor(
 
     fun observeTotalMobile(since: Long): Flow<Long> =
         dao.observeTotalByType(since, "MOBILE").map { it ?: 0L }
-
 }
 
 // ─── Unlock Session Repository ────────────────────────────────────────────────
@@ -373,8 +367,6 @@ class BluetoothRepository @Inject constructor(
 
 // ─── Insight Repository ───────────────────────────────────────────────────────
 
-// ─── Insight Repository ───────────────────────────────────────────────────────
-
 @Singleton
 class InsightRepository @Inject constructor(
     private val unlockSessionRepository: UnlockSessionRepository,
@@ -390,3 +382,46 @@ class InsightRepository @Inject constructor(
     }
 }
 
+// ─── XP Repository ───────────────────────────────────────────────────────────
+
+@Singleton
+class XpRepository @Inject constructor(
+    private val dao: XpDao
+) {
+    val totalXpFlow: Flow<Int> = dao.observeTotalXp()
+
+    val xpStateFlow: Flow<XpState> = totalXpFlow.map { xp -> XpState.from(xp) }
+
+    val recentEvents = dao.observeRecent()
+
+    suspend fun recordHealthTick(score: Int) = withContext(Dispatchers.IO) {
+        val fiftyMinsAgo = System.currentTimeMillis() - 50 * 60 * 1000L
+        if (dao.getTickCountSince(fiftyMinsAgo) > 0) return@withContext
+
+        val (xp, note) = when {
+            score >= 80 -> 20 to "Score $score — Excellent"
+            score >= 60 -> 10 to "Score $score — Good"
+            score >= 40 ->  5 to "Score $score — Fair"
+            else        ->  0 to "Score $score — Poor"
+        }
+        if (xp == 0) return@withContext
+
+        dao.insert(XpEventEntity(
+            timestamp = System.currentTimeMillis(),
+            type = XpEventType.HEALTH_SCORE_TICK.name,
+            amount = xp,
+            note = note
+        ))
+    }
+
+    suspend fun recordFocusCancelPenalty(appName: String) = withContext(Dispatchers.IO) {
+        dao.insert(XpEventEntity(
+            timestamp = System.currentTimeMillis(),
+            type = XpEventType.FOCUS_CANCEL_PENALTY.name,
+            amount = -50,
+            note = "Opened $appName during focus"
+        ))
+    }
+
+    suspend fun getTotalXp(): Int = withContext(Dispatchers.IO) { dao.getTotalXp() }
+}

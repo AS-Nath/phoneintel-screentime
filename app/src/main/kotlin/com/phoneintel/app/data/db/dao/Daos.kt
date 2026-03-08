@@ -224,3 +224,24 @@ interface DailySummaryDao {
     @Query("DELETE FROM daily_summary WHERE date < :beforeDate")
     suspend fun pruneOlderThan(beforeDate: Long)
 }
+
+// ─── XP DAO ───────────────────────────────────────────────────────────────────
+
+@Dao
+interface XpDao {
+
+    @Insert
+    suspend fun insert(event: XpEventEntity): Long
+
+    @Query("SELECT * FROM xp_ledger ORDER BY timestamp DESC LIMIT :limit")
+    fun observeRecent(limit: Int = 50): Flow<List<XpEventEntity>>
+
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM xp_ledger")
+    fun observeTotalXp(): Flow<Int>
+
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM xp_ledger")
+    suspend fun getTotalXp(): Int
+
+    @Query("SELECT COUNT(*) FROM xp_ledger WHERE type = 'HEALTH_SCORE_TICK' AND timestamp >= :fromTime")
+    suspend fun getTickCountSince(fromTime: Long): Int
+}
