@@ -46,7 +46,10 @@ class DataCollectionService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var syncJob: Job? = null
 
-    // Session tracking state
+    // Session tracking state.
+    // @Volatile ensures reads/writes are visible across threads, but the
+    // guard logic in the receivers still runs on the main thread so there
+    // is no torn-read risk for the guard checks.
     @Volatile private var currentSessionId: Long = -1L
     @Volatile private var unlockTime: Long = 0L
 
@@ -94,6 +97,12 @@ class DataCollectionService : Service() {
             Log.d(TAG, "screenReceiver.onReceive: action=${intent.action}")
             when (intent.action) {
                 Intent.ACTION_SCREEN_ON -> {
+                    // Bug fix #2: guard against double SCREEN_ON (ambient display,
+                    // notification peek, etc.) which would orphan the first session.
+                    if (currentSessionId > 0L) {
+                        Log.w(TAG, "SCREEN_ON ignored — session $currentSessionId already active")
+                        return
+                    }
                     val now = System.currentTimeMillis()
                     unlockTime = now
                     Log.d(TAG, "SCREEN_ON — starting session at $now")
@@ -103,13 +112,23 @@ class DataCollectionService : Service() {
                             Log.d(TAG, "Session started successfully, id=$currentSessionId")
                         } catch (e: Exception) {
                             Log.e(TAG, "ERROR starting session", e)
+                            // Reset so the next SCREEN_ON isn't blocked by the guard above
+                            currentSessionId = -1L
+                            unlockTime = 0L
                         }
                     }
                     showMindfulUnlockNotification()
                 }
                 Intent.ACTION_SCREEN_OFF -> {
+                    // Bug fix #1: snapshot both values immediately on the broadcast
+                    // thread, then reset them before launching the coroutine. This
+                    // means a rapid SCREEN_ON that fires before endSession completes
+                    // will see clean state and start a fresh session correctly.
                     val sid = currentSessionId
                     val start = unlockTime
+                    currentSessionId = -1L
+                    unlockTime = 0L
+
                     Log.d(TAG, "ACTION_SCREEN_OFF fired — sid=$sid, start=$start")
                     if (sid > 0L && start > 0L) {
                         val now = System.currentTimeMillis()
@@ -123,8 +142,6 @@ class DataCollectionService : Service() {
                                 Log.e(TAG, "ERROR ending session", e)
                             }
                         }
-                        currentSessionId = -1L
-                        unlockTime = 0L
                     } else {
                         Log.w(TAG, "SCREEN_OFF skipped — no active session (sid=$sid, start=$start)")
                     }
@@ -220,6 +237,14 @@ class DataCollectionService : Service() {
             registerReceiver(bluetoothReceiver, btFilter)
         }
 
+        // Bug fix #4: close any sessions left open by a previous service instance
+        // (crash, ANR, system kill). Sets durationMs = 0 so they are excluded from
+        // avg/max queries but still counted in unlock totals.
+        scope.launch {
+            runCatching { unlockSessionRepository.closeOrphanedSessions() }
+                .onFailure { Log.e(TAG, "closeOrphanedSessions failed", it) }
+        }
+
         startPeriodicSync()
         Log.d(TAG, "DataCollectionService fully started")
     }
@@ -248,7 +273,6 @@ class DataCollectionService : Service() {
         val totalScreenTimeMs = appUsageRepository.getAllSince(startOfDay)
             .sumOf { it.totalForegroundMs }
 
-        // Night usage: unlocks between 23:00 and 06:00
         val cal = java.util.Calendar.getInstance()
         val nightMs = sessions.filter {
             cal.timeInMillis = it.unlockTime
@@ -257,14 +281,13 @@ class DataCollectionService : Service() {
         }.sumOf { it.durationMs }
 
         val longestSession = sessions.maxOfOrNull { it.durationMs } ?: 0L
-        val unlockCount = sessions.size
 
         val score = PhoneHealthScore.compute(
             totalScreenTimeMs = totalScreenTimeMs,
             nightUsageMs = nightMs,
-            unlockCount = unlockCount,
+            unlockCount = sessions.size,
             longestSessionMs = longestSession,
-            notificationCount = 0   // not used in scoring (removed earlier)
+            notificationCount = 0
         ).score
 
         xpRepository.recordHealthTick(score)
@@ -276,6 +299,8 @@ class DataCollectionService : Service() {
             val sessions = runCatching { unlockSessionRepository.getCompletedToday() }
                 .onFailure { Log.e(TAG, "getCompletedToday failed", it) }
                 .getOrDefault(emptyList())
+            // +1 accounts for the current session which is open (durationMs = 0)
+            // and therefore excluded from getCompletedToday().
             val unlockCountToday = sessions.size + 1
 
             Log.d(TAG, "Showing mindful unlock notification — unlock #$unlockCountToday today")

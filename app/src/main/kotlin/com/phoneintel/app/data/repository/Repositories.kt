@@ -314,6 +314,20 @@ class UnlockSessionRepository @Inject constructor(
 
     suspend fun getCompletedSince(fromTime: Long): List<UnlockSessionEntity> =
         withContext(Dispatchers.IO) { dao.getCompletedSince(fromTime) }
+
+    // Bug fix #4: called on service start to close sessions orphaned by a
+    // previous crash or system kill. Uses durationMs = 0 as a tombstone so
+    // they count toward unlock totals but are excluded from avg/max queries.
+    suspend fun closeOrphanedSessions() = withContext(Dispatchers.IO) {
+        val open = dao.getOpenSessions()
+        open.forEach { dao.closeSession(it.id, it.unlockTime, 0L) }
+    }
+
+    // Returns true if there is currently an open session (screen is on).
+    // Used by PhoneHealthViewModel to include the active unlock in the total count.
+    suspend fun hasActiveSession(): Boolean = withContext(Dispatchers.IO) {
+        dao.getOpenSessions().isNotEmpty()
+    }
 }
 
 // ─── Battery Repository ───────────────────────────────────────────────────────

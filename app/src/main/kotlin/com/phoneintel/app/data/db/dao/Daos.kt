@@ -194,8 +194,15 @@ interface UnlockSessionDao {
     @Query("SELECT AVG(durationMs) FROM unlock_sessions WHERE unlockTime >= :fromTime AND durationMs > 0")
     fun observeAvgDuration(fromTime: Long): Flow<Long?>
 
-    @Query("SELECT MAX(durationMs) FROM unlock_sessions WHERE unlockTime >= :fromTime")
+    // Bug fix #3: exclude open sessions (durationMs = 0) so the first unlock
+    // of the day doesn't report a longest-session of 0 while still active.
+    @Query("SELECT MAX(durationMs) FROM unlock_sessions WHERE unlockTime >= :fromTime AND durationMs > 0")
     fun observeMaxDuration(fromTime: Long): Flow<Long?>
+
+    // Bug fix #4: fetch sessions left open by a previous service instance
+    // (durationMs = 0 and lockTime = 0 means never closed).
+    @Query("SELECT * FROM unlock_sessions WHERE durationMs = 0 AND lockTime = 0")
+    suspend fun getOpenSessions(): List<UnlockSessionEntity>
 
     @Query("DELETE FROM unlock_sessions WHERE unlockTime < :beforeTime")
     suspend fun pruneOlderThan(beforeTime: Long)

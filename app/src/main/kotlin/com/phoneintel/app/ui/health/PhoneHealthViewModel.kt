@@ -30,44 +30,83 @@ class PhoneHealthViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(PhoneHealthUiState())
     val uiState: StateFlow<PhoneHealthUiState> = _uiState.asStateFlow()
 
-    init { load() }
+    init {
+        observeReactiveData()
+    }
 
-    fun refresh() { load() }
+    fun refresh() {
+        // Force a recompute — the flows will re-emit on their own, but this
+        // lets the user manually trigger a refresh if needed.
+        viewModelScope.launch { recompute() }
+    }
 
-    private fun load() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+    private fun observeReactiveData() {
+        val todayStart = DateUtil.startOfDay()
 
-            val todayStart = DateUtil.startOfDay()
+        // Re-recompute whenever a session completes (avg duration changes)
+        // or the session count changes (new unlock).
+        unlockSessionRepository.observeAvgDurationToday()
+            .onEach { recompute() }
+            .launchIn(viewModelScope)
 
-            // Completed unlock sessions today
-            val sessions = unlockSessionRepository.getCompletedSince(todayStart)
+        unlockSessionRepository.observeCountToday()
+            .onEach { recompute() }
+            .launchIn(viewModelScope)
 
-            // Night usage: sessions whose unlock fell in the 23:00–06:00 window
-            val nightMs = sessions.filter { isNightHour(it.unlockTime) }.sumOf { it.durationMs }
+        // Also recompute when screen time changes (affects the score).
+        appUsageRepository.observeTodayTotalMs()
+            .onEach { recompute() }
+            .launchIn(viewModelScope)
 
-            // Attention stats
-            val sessionCount = sessions.size
-            val avgMs = if (sessions.isEmpty()) 0L else sessions.sumOf { it.durationMs } / sessions.size
-            val longestMs = sessions.maxOfOrNull { it.durationMs } ?: 0L
-            val shortCount = sessions.count { it.durationMs < 3 * 60_000L }
-            val frag = if (sessionCount == 0) 0f
-                       else (shortCount.toFloat() / sessionCount).coerceIn(0f, 1f)
-            val attention = AttentionStats(sessionCount, avgMs, longestMs, shortCount, frag)
+        notificationRepository.observeTotalCount(todayStart)
+            .onEach { recompute() }
+            .launchIn(viewModelScope)
+    }
 
-            val screenTimeMs = appUsageRepository.observeTodayTotalMs().first()
-            val notifCount = notificationRepository.observeTotalCount(todayStart).first()
+    private suspend fun recompute() {
+        val todayStart = DateUtil.startOfDay()
 
-            val score = PhoneHealthScore.compute(
-                totalScreenTimeMs = screenTimeMs,
-                nightUsageMs = nightMs,
-                unlockCount = sessionCount,
-                longestSessionMs = longestMs,
-                notificationCount = notifCount
-            )
+        // Completed sessions — used for duration-based stats (avg, longest, short count).
+        // The active session is excluded here intentionally: its duration is 0 and
+        // would skew the average and longest-session values downward.
+        val completedSessions = unlockSessionRepository.getCompletedSince(todayStart)
 
-            _uiState.update { it.copy(score = score, attention = attention, isLoading = false) }
-        }
+        // Total unlock count includes the active session so the score reflects
+        // reality (you've unlocked N times, even if the Nth is still open).
+        val totalUnlockCount = completedSessions.size +
+                if (unlockSessionRepository.hasActiveSession()) 1 else 0
+
+        val nightMs = completedSessions
+            .filter { isNightHour(it.unlockTime) }
+            .sumOf { it.durationMs }
+
+        val avgMs = if (completedSessions.isEmpty()) 0L
+        else completedSessions.sumOf { it.durationMs } / completedSessions.size
+        val longestMs = completedSessions.maxOfOrNull { it.durationMs } ?: 0L
+        val shortCount = completedSessions.count { it.durationMs < 3 * 60_000L }
+        val frag = if (completedSessions.isEmpty()) 0f
+        else (shortCount.toFloat() / completedSessions.size).coerceIn(0f, 1f)
+
+        val attention = AttentionStats(
+            sessionCount  = totalUnlockCount,
+            avgSessionMs  = avgMs,
+            longestSessionMs = longestMs,
+            shortSessionCount = shortCount,
+            fragmentationIndex = frag
+        )
+
+        val screenTimeMs = appUsageRepository.observeTodayTotalMs().first()
+        val notifCount   = notificationRepository.observeTotalCount(todayStart).first()
+
+        val score = PhoneHealthScore.compute(
+            totalScreenTimeMs = screenTimeMs,
+            nightUsageMs      = nightMs,
+            unlockCount       = totalUnlockCount,
+            longestSessionMs  = longestMs,
+            notificationCount = notifCount
+        )
+
+        _uiState.update { it.copy(score = score, attention = attention, isLoading = false) }
     }
 
     private fun isNightHour(epochMs: Long): Boolean {
