@@ -26,18 +26,37 @@ Progress happens in steps, not overnight. PhoneIntel is built for the long game.
 - Total screen time today with a 7-day trend chart
 - Top 5 apps by usage
 - Unlock count, average session length, and attention fragmentation index
-- Battery level, charging status, and notification count
-- Phone health score with letter grade — a single number that reflects your overall habits
+- Phone health score with grade and contextual label — a single number that reflects your overall habits
+- XP level card showing your current level, title, and progress toward the next level
+- Insight strip — a one-line preview of your most important behavioural pattern this week
 
 ### Phone Health
-- Full health score breakdown across screen time, night usage, unlock frequency, and notification load
+- Full health score breakdown across screen time, night usage, unlock frequency, and longest session
 - Attention stats: session count, average and longest session, short session ratio
 - Fragmentation index: how scattered your attention is across the day
 
 ### Focus Mode
-- Start a focus session with a stated intent (Work, Reading, Rest, etc.)
+- Start a focus session with a stated intent (Work, Study, Family, Sleep, Custom)
+- Search and select apps to block individually
 - Blocks chosen apps for the duration — the one exception to the no-force rule, and only when *you* choose it
 - Mindful unlock notification at every unlock: a gentle nudge, not a wall
+- Full-screen block overlay when a blocked app is opened, showing the app's real name
+- "Stay Focused" returns you to PhoneIntel; "End Focus Session" drops you into the app with an XP penalty
+- Cancelling a session from within the app carries no penalty — only breaking it from the block screen does
+
+### Insights
+- Weekly behavioural analysis derived entirely from your local data
+- Six insight types: Night Habit, Single App Sink, Compulsive Checker, Fragmentation Spike, Notification Driver, Improving
+- Digital Personality card — a two-word label derived from your dominant pattern this week
+- Biggest Attention Leak card — the app most responsible for pulling you in
+- Demo cards shown until enough data has accumulated
+
+### XP + Levelling
+- Earn XP passively each hour based on your phone health score
+- Score ≥ 80 → +20 XP · Score 60–79 → +10 XP · Score 40–59 → +5 XP · Score < 40 → no XP
+- Breaking a focus session from the block popup costs 50 XP
+- Levels carry titles: Newcomer → Aware → Mindful → Focused → Disciplined → Intentional → Balanced → Clear-headed → Present → Enlightened → Master
+- Full XP ledger stored locally; every event is append-only and auditable
 
 ### Notification Tracking
 - Per-app notification counts for today, 7 days, and 30 days
@@ -55,7 +74,7 @@ Progress happens in steps, not overnight. PhoneIntel is built for the long game.
 
 ### Battery Analytics
 - Current level and charging status
-- 24-hour bar chart color-coded by level
+- 24-hour bar chart colour-coded by level
 - 7-day average battery level
 
 ### Year-End Recap
@@ -72,26 +91,29 @@ MVVM + Room + Jetpack Compose + Hilt
 app/
 ├── data/
 │   ├── db/
-│   │   ├── entities/       Room @Entity classes (7 tables)
+│   │   ├── entities/       Room @Entity classes (8 tables)
 │   │   ├── dao/            Type-safe DAOs with Flow queries
 │   │   └── AppDatabase.kt  Room database config
-│   └── repository/         Data sources + system API bridges
+│   └── repository/         Data sources + system API bridges (all in Repositories.kt)
 ├── domain/
-│   └── model/              Pure Kotlin data models
+│   └── model/              Pure Kotlin data models + InsightEngine
 ├── service/
-│   ├── DataCollectionService.kt    Foreground service + screen/unlock tracking
+│   ├── DataCollectionService.kt      Foreground service, screen/unlock tracking, XP ticks
+│   ├── FocusEnforcementService.kt    Persistent foreground-app polling, block overlay
 │   ├── NotificationListenerService.kt
 │   └── BootReceiver.kt
 ├── ui/
 │   ├── dashboard/          Home screen + ViewModel
 │   ├── health/             Phone health score screen
+│   ├── focus/              Focus setup, active session, block overlay activity
+│   ├── insights/           Weekly insight cards + personality card
 │   ├── notifications/      Notification stats
 │   ├── network/            Per-app network usage
 │   ├── bluetooth/          Bluetooth device tracking
 │   ├── battery/            Battery analytics
 │   ├── recap/              Year-end recap
 │   ├── components/         Shared composables
-│   ├── theme/              Material3 theme + colors
+│   ├── theme/              Material3 dark forest green theme
 │   └── NavGraph.kt         Navigation setup
 ├── di/
 │   └── DatabaseModule.kt   Hilt DI bindings
@@ -112,6 +134,23 @@ app/
 | `battery_snapshots` | Periodic level, charging state, temperature |
 | `unlock_sessions` | Per-session unlock time, lock time, and duration |
 | `daily_summary` | Pre-aggregated daily rollup for fast reads |
+| `xp_ledger` | Append-only XP event log (gains + penalties) |
+
+---
+
+## Design
+
+PhoneIntel uses a custom dark forest green theme throughout:
+
+| Token | Hex | Usage |
+|---|---|---|
+| `BgBase` | `#0A1A12` | Screen backgrounds |
+| `BgCard` | `#0F2218` | Card surfaces |
+| `Mint` | `#3DEBA8` | Primary accent — scores, CTAs, highlights |
+| `TextPrimary` | `#EEF2EE` | Body text |
+| `TextSecondary` | `#7A9A84` | Labels, secondary text |
+| `CoralAccent` | `#FF6B6B` | Alerts, warnings, block overlay |
+| `AmberAccent` | `#FFB547` | Medium-severity warnings |
 
 ---
 
@@ -166,18 +205,6 @@ git clone <repo>
 
 **Samsung One UI (Android 12+):** `ACTION_USER_PRESENT` is not broadcast after biometric unlock. PhoneIntel uses `ACTION_SCREEN_ON` as the unlock signal instead, which works reliably across all OEMs and lock screen types.
 
+**Focus blocking reliability:** Some apps (news readers, video players) fire `MOVE_TO_FOREGROUND` once on launch and go quiet. PhoneIntel's enforcement service maintains a persistent foreground-app state updated on every poll cycle rather than querying a short event window, which ensures these apps are caught reliably.
+
 ---
-
-## Roadmap
-
-- [ ] Permission onboarding flow (step-by-step grant screens)
-- [ ] Daily summary WorkManager job (pre-aggregates `daily_summary`)
-- [ ] App usage goals with self-set soft limits
-- [ ] Notification quiet hours suggestions
-- [ ] Weekly habit review screen — progress over time, not just today
-- [ ] Export data as CSV (local only)
-- [ ] Home screen widget: today's screen time
-- [ ] Dark/light theme toggle in settings
-- [ ] App icon categories (Social, Productivity, Entertainment)
-- [ ] Year recap shareable card (generated locally, no upload)
-- [ ] XP + levelling system (Gamified aspect to promote user retention) 
