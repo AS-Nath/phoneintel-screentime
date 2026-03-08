@@ -68,10 +68,6 @@ Progress happens in steps, not overnight. PhoneIntel is built for the long game.
 - Upload and download split
 - Range filters: today, 7 days, 30 days
 
-### Bluetooth
-- Known devices with full connection history
-- Connect/disconnect timeline and total duration per device
-
 ### Battery Analytics
 - Current level and charging status
 - 24-hour bar chart colour-coded by level
